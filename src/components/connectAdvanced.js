@@ -24,17 +24,13 @@ function makeSelectorStateful(sourceSelector, store) {
             prop => Promise.resolve(prop)
           )
 
-          console.log(Q)
-          console.log(Promise)
-          console.log(reduce)
-
           Q.allSettled(nextPropsAsPromises).then(resolvedValues => {
             console.log(resolvedValues)
             selector.shouldComponentUpdate = true
             selector.props = reduce(
               keys(nextProps),
               (acc, prop, idx) => {
-                acc[prop] = resolvedValues[idx]
+                acc[prop] = resolvedValues[idx].value
               },
               {}
             )
