@@ -4,7 +4,7 @@ import { Component, createElement } from 'react'
 
 import Subscription from '../utils/Subscription'
 import { storeShape, subscriptionShape } from '../utils/PropTypes'
-import { get, values, map, reduce, keys } from 'lodash'
+import { values, map, reduce, keys } from 'lodash'
 import Q from 'q'
 
 let hotReloadingVersion = 0
@@ -20,6 +20,7 @@ function makeSelectorStateful(sourceSelector, store) {
         if (nextProps !== selector.props || selector.error) {
 
           selector.shouldComponentUpdate = true
+          selector.props = nextProps
           selector.props = nextProps
           selector.error = null
 
@@ -39,7 +40,6 @@ function makeSelectorStateful(sourceSelector, store) {
               {}
             )
             selector.error = null
-            console.log(selector.props)
 
             return Promise.resolve(selector.props)
           })
