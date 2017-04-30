@@ -4,7 +4,7 @@ import { Component, createElement } from 'react'
 
 import Subscription from '../utils/Subscription'
 import { storeShape, subscriptionShape } from '../utils/PropTypes'
-import { values, map, reduce, keys } from 'lodash'
+import { get, values, map, reduce, keys } from 'lodash'
 import Q from 'q'
 
 let hotReloadingVersion = 0
@@ -19,15 +19,18 @@ function makeSelectorStateful(sourceSelector, store) {
 
         if (nextProps !== selector.props || selector.error) {
 
+          selector.shouldComponentUpdate = true
+          selector.props = nextProps
+          selector.error = null
+
           const nextPropsAsPromises = map(
             values(nextProps),
             prop => Promise.resolve(prop)
           )
 
-          Q.allSettled(nextPropsAsPromises).then(resolvedValues => {
-            console.log(resolvedValues)
+          selector.propsPromise = Q.allSettled(nextPropsAsPromises).then(resolvedValues => {
             selector.shouldComponentUpdate = true
-            selector.props = reduce(
+            const arr = reduce(
               keys(nextProps),
               (acc, prop, idx) => {
                 acc[prop] = resolvedValues[idx].value
@@ -35,13 +38,13 @@ function makeSelectorStateful(sourceSelector, store) {
               {}
             )
             selector.error = null
-          })
+            console.log(arr)
 
-          // selector.shouldComponentUpdate = true
-          // selector.props = nextProps
-          // selector.error = null
+            return Promise.resolve(selector.props)
+          })
         }
       } catch (error) {
+        console.log(error)
         selector.shouldComponentUpdate = true
         selector.error = error
       }
@@ -164,6 +167,12 @@ export default function connectAdvanced(
         return { [subscriptionKey]: subscription || this.context[subscriptionKey] }
       }
 
+      updateAfterPropsResolve(forceUpdate = false) {
+        return this.selector.propsPromise.then(() => {
+          if (forceUpdate && this.selector.shouldComponentUpdate) this.forceUpdate()
+        })
+      }
+
       componentDidMount() {
         if (!shouldHandleStateChanges) return
 
@@ -175,11 +184,13 @@ export default function connectAdvanced(
         // re-render.
         this.subscription.trySubscribe()
         this.selector.run(this.props)
-        if (this.selector.shouldComponentUpdate) this.forceUpdate()
+        if (this.selector.propsPromise.state === 'fulfilled' && this.selector.shouldComponentUpdate) this.forceUpdate()
+        // this.updateAfterPropsResolve(true)
       }
 
       componentWillReceiveProps(nextProps) {
         this.selector.run(nextProps)
+        // this.updateAfterPropsResolve(true)
       }
 
       shouldComponentUpdate() {
@@ -211,6 +222,7 @@ export default function connectAdvanced(
         const sourceSelector = selectorFactory(this.store.dispatch, selectorFactoryOptions)
         this.selector = makeSelectorStateful(sourceSelector, this.store)
         this.selector.run(this.props)
+        // this.updateAfterPropsResolve(true)
       }
 
       initSubscription() {
@@ -232,13 +244,18 @@ export default function connectAdvanced(
 
       onStateChange() {
         this.selector.run(this.props)
-
         if (!this.selector.shouldComponentUpdate) {
           this.notifyNestedSubs()
         } else {
-          this.componentDidUpdate = this.notifyNestedSubsOnComponentDidUpdate
+          // this.selector.propsPromise.then(() => {
+          //
+          //   console.log(this.selector.props)
+            if (this.selector.shouldComponentUpdate) {
+              this.componentDidUpdate = this.notifyNestedSubsOnComponentDidUpdate
 
-          this.setState(dummyState)
+              this.setState(dummyState)
+            }
+          // })
         }
       }
 
