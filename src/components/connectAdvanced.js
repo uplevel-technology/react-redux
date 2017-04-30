@@ -30,21 +30,21 @@ function makeSelectorStateful(sourceSelector, store) {
 
           selector.propsPromise = Q.allSettled(nextPropsAsPromises).then(resolvedValues => {
             selector.shouldComponentUpdate = true
-            const arr = reduce(
+            selector.props = reduce(
               keys(nextProps),
               (acc, prop, idx) => {
                 acc[prop] = resolvedValues[idx].value
+                return acc
               },
               {}
             )
             selector.error = null
-            console.log(arr)
+            console.log(selector.props)
 
             return Promise.resolve(selector.props)
           })
         }
       } catch (error) {
-        console.log(error)
         selector.shouldComponentUpdate = true
         selector.error = error
       }
@@ -185,12 +185,12 @@ export default function connectAdvanced(
         this.subscription.trySubscribe()
         this.selector.run(this.props)
         if (this.selector.propsPromise.state === 'fulfilled' && this.selector.shouldComponentUpdate) this.forceUpdate()
-        // this.updateAfterPropsResolve(true)
+        this.updateAfterPropsResolve(true)
       }
 
       componentWillReceiveProps(nextProps) {
         this.selector.run(nextProps)
-        // this.updateAfterPropsResolve(true)
+        this.updateAfterPropsResolve(true)
       }
 
       shouldComponentUpdate() {
@@ -222,7 +222,7 @@ export default function connectAdvanced(
         const sourceSelector = selectorFactory(this.store.dispatch, selectorFactoryOptions)
         this.selector = makeSelectorStateful(sourceSelector, this.store)
         this.selector.run(this.props)
-        // this.updateAfterPropsResolve(true)
+        this.updateAfterPropsResolve(true)
       }
 
       initSubscription() {
@@ -247,15 +247,13 @@ export default function connectAdvanced(
         if (!this.selector.shouldComponentUpdate) {
           this.notifyNestedSubs()
         } else {
-          // this.selector.propsPromise.then(() => {
-          //
-          //   console.log(this.selector.props)
+          this.selector.propsPromise.then(() => {
             if (this.selector.shouldComponentUpdate) {
               this.componentDidUpdate = this.notifyNestedSubsOnComponentDidUpdate
 
               this.setState(dummyState)
             }
-          // })
+          })
         }
       }
 
