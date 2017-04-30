@@ -14,6 +14,8 @@ function makeSelectorStateful(sourceSelector, store) {
     run: function runComponentSelector(props) {
       try {
         const nextProps = sourceSelector(store.getState(), props)
+        console.log(nextProps)
+
         if (nextProps !== selector.props || selector.error) {
           selector.shouldComponentUpdate = true
           selector.props = nextProps
