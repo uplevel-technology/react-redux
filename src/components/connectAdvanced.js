@@ -4,6 +4,8 @@ import { Component, createElement } from 'react'
 
 import Subscription from '../utils/Subscription'
 import { storeShape, subscriptionShape } from '../utils/PropTypes'
+import { values, map, reduce, keys } from 'lodash'
+import Q from 'q'
 
 let hotReloadingVersion = 0
 const dummyState = {}
@@ -14,12 +16,34 @@ function makeSelectorStateful(sourceSelector, store) {
     run: function runComponentSelector(props) {
       try {
         const nextProps = sourceSelector(store.getState(), props)
-        console.log(nextProps)
 
         if (nextProps !== selector.props || selector.error) {
-          selector.shouldComponentUpdate = true
-          selector.props = nextProps
-          selector.error = null
+
+          const nextPropsAsPromises = map(
+            values(nextProps),
+            prop => Promise.resolve(prop)
+          )
+
+          console.log(Q)
+          console.log(Promise)
+          console.log(reduce)
+
+          Q.allSettled(nextPropsAsPromises).then(resolvedValues => {
+            console.log(resolvedValues)
+            selector.shouldComponentUpdate = true
+            selector.props = reduce(
+              keys(nextProps),
+              (acc, prop, idx) => {
+                acc[prop] = resolvedValues[idx]
+              },
+              {}
+            )
+            selector.error = null
+          })
+
+          // selector.shouldComponentUpdate = true
+          // selector.props = nextProps
+          // selector.error = null
         }
       } catch (error) {
         selector.shouldComponentUpdate = true
@@ -217,6 +241,7 @@ export default function connectAdvanced(
           this.notifyNestedSubs()
         } else {
           this.componentDidUpdate = this.notifyNestedSubsOnComponentDidUpdate
+
           this.setState(dummyState)
         }
       }
