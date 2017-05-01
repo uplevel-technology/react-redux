@@ -222,7 +222,6 @@ export default function connectAdvanced(
         const sourceSelector = selectorFactory(this.store.dispatch, selectorFactoryOptions)
         this.selector = makeSelectorStateful(sourceSelector, this.store)
         this.selector.run(this.props)
-        this.updateAfterPropsResolve(true)
       }
 
       initSubscription() {
