@@ -4,7 +4,7 @@ import { Component, createElement } from 'react'
 
 import Subscription from '../utils/Subscription'
 import { storeShape, subscriptionShape } from '../utils/PropTypes'
-import { values, map, reduce, keys } from 'lodash'
+import { map, get, values, reduce, keys, filter } from 'lodash'
 import Q from 'q'
 
 let hotReloadingVersion = 0
@@ -16,19 +16,13 @@ function makeSelectorStateful(sourceSelector, store) {
     run: function runComponentSelector(props) {
       try {
         const nextProps = sourceSelector(store.getState(), props)
+        const promisedProps = filter(
+          values(nextProps),
+          prop => typeof prop.then === 'function'
+        )
 
-        if (nextProps !== selector.props || selector.error) {
-
-          selector.shouldComponentUpdate = false
-          selector.props = nextProps
-          selector.error = null
-
-          const nextPropsAsPromises = map(
-            values(nextProps),
-            prop => Promise.resolve(prop)
-          )
-
-          selector.propsPromise = Q.allSettled(nextPropsAsPromises).then(resolvedValues => {
+        if (promisedProps.length > 0) {
+          selector.propsPromise = Q.allSettled(promisedProps).then(resolvedValues => {
             selector.shouldComponentUpdate = true
             selector.props = reduce(
               keys(nextProps),
@@ -39,9 +33,12 @@ function makeSelectorStateful(sourceSelector, store) {
               {}
             )
             selector.error = null
-
-            return Promise.resolve(selector.props)
+            return selector.props
           })
+        } else if (nextProps !== selector.props || selector.error) {
+          selector.shouldComponentUpdate = false
+          selector.props = nextProps
+          selector.error = null
         }
       } catch (error) {
         selector.shouldComponentUpdate = true
@@ -166,10 +163,52 @@ export default function connectAdvanced(
         return { [subscriptionKey]: subscription || this.context[subscriptionKey] }
       }
 
-      updateAfterPropsResolve(forceUpdate = false) {
-        return this.selector.propsPromise.then(() => {
-          if (forceUpdate && this.selector.shouldComponentUpdate) this.forceUpdate()
-        })
+      makeSelectorStateful(sourceSelector, store) {
+        // wrap the selector in an object that tracks its results between runs.
+        const component = this
+        const selector = {
+          run: function runComponentSelector(props, triggerUpdate) {
+            try {
+              const nextProps = sourceSelector(store.getState(), props)
+              const promisedProps = filter(
+                values(nextProps),
+                prop => prop && typeof prop.then === 'function'
+              )
+
+              if (promisedProps.length > 0 && (nextProps !== selector.props || selector.error)) {
+                selector.props = { ...nextProps }
+                selector.error = null
+                const nextPropsAsPromises = map(
+                  values(nextProps),
+                  prop => Promise.resolve(prop)
+                )
+                selector.propsPromise = Q.allSettled(nextPropsAsPromises).then(resolvedValues => {
+                  selector.shouldComponentUpdate = true
+                  selector.props = reduce(
+                    keys(nextProps),
+                    (acc, prop, idx) => {
+                      acc[prop] = resolvedValues[idx].value
+                      return acc
+                    },
+                    {}
+                  )
+                  selector.error = null
+                  if (triggerUpdate) component.setState(dummyState)
+                  return selector.props
+                })
+              } else if (nextProps !== selector.props || selector.error) {
+                selector.shouldComponentUpdate = true
+                selector.props = nextProps
+                selector.error = null
+              }
+            } catch (error) {
+              selector.shouldComponentUpdate = true
+              selector.error = error
+            }
+          }
+        }
+
+        return selector
       }
 
       componentDidMount() {
@@ -182,14 +221,12 @@ export default function connectAdvanced(
         // dispatching an action in its componentWillMount, we have to re-run the select and maybe
         // re-render.
         this.subscription.trySubscribe()
-        this.selector.run(this.props)
+        this.selector.run(this.props, true)
         if (this.selector.shouldComponentUpdate) this.forceUpdate()
-        // this.updateAfterPropsResolve(true)
       }
 
       componentWillReceiveProps(nextProps) {
         this.selector.run(nextProps)
-        // this.updateAfterPropsResolve(true)
       }
 
       shouldComponentUpdate() {
@@ -219,7 +256,7 @@ export default function connectAdvanced(
 
       initSelector() {
         const sourceSelector = selectorFactory(this.store.dispatch, selectorFactoryOptions)
-        this.selector = makeSelectorStateful(sourceSelector, this.store)
+        this.selector = this.makeSelectorStateful(sourceSelector, this.store)
         this.selector.run(this.props)
       }
 
@@ -241,18 +278,26 @@ export default function connectAdvanced(
       }
 
       onStateChange() {
-        this.selector.run(this.props)
+        this.selector.run(this.props, true)
+
         if (!this.selector.shouldComponentUpdate) {
           this.notifyNestedSubs()
         } else {
-          this.selector.propsPromise.then(() => {
-            if (this.selector.shouldComponentUpdate) {
-              this.componentDidUpdate = this.notifyNestedSubsOnComponentDidUpdate
-
-              this.setState(dummyState)
-            }
-          })
+          this.componentDidUpdate = this.notifyNestedSubsOnComponentDidUpdate
+          this.setState(dummyState)
         }
+        // this.selector.run(this.props)
+        // if (!this.selector.shouldComponentUpdate) {
+        //   this.notifyNestedSubs()
+        // } else {
+        //   this.selector.propsPromise.then(() => {
+        //     if (this.selector.shouldComponentUpdate) {
+        //       this.componentDidUpdate = this.notifyNestedSubsOnComponentDidUpdate
+        //
+        //       this.setState(dummyState)
+        //     }
+        //   })
+        // }
       }
 
       notifyNestedSubsOnComponentDidUpdate() {
