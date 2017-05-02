@@ -19,8 +19,7 @@ function makeSelectorStateful(sourceSelector, store) {
 
         if (nextProps !== selector.props || selector.error) {
 
-          selector.shouldComponentUpdate = true
-          selector.props = nextProps
+          selector.shouldComponentUpdate = false
           selector.props = nextProps
           selector.error = null
 
@@ -184,13 +183,13 @@ export default function connectAdvanced(
         // re-render.
         this.subscription.trySubscribe()
         this.selector.run(this.props)
-        if (this.selector.propsPromise.state === 'fulfilled' && this.selector.shouldComponentUpdate) this.forceUpdate()
-        this.updateAfterPropsResolve(true)
+        if (this.selector.shouldComponentUpdate) this.forceUpdate()
+        // this.updateAfterPropsResolve(true)
       }
 
       componentWillReceiveProps(nextProps) {
         this.selector.run(nextProps)
-        this.updateAfterPropsResolve(true)
+        // this.updateAfterPropsResolve(true)
       }
 
       shouldComponentUpdate() {
