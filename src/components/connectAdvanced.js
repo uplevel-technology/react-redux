@@ -128,7 +128,7 @@ export default function connectAdvanced(
         // wrap the selector in an object that tracks its results between runs.
         const component = this
         const selector = {
-          run: function runComponentSelector(props, triggerUpdate) {
+          run: function runComponentSelector(props) {
             try {
               const nextProps = sourceSelector(store.getState(), props)
               const promisedProps = pickBy(
@@ -151,7 +151,7 @@ export default function connectAdvanced(
                     selector.props
                   )
                   selector.error = null
-                  if (triggerUpdate) component.setState(dummyState)
+                  component.setState(dummyState)
                   return selector.props
                 })
               } else if (nextProps !== selector.props || selector.error) {
@@ -179,7 +179,7 @@ export default function connectAdvanced(
         // dispatching an action in its componentWillMount, we have to re-run the select and maybe
         // re-render.
         this.subscription.trySubscribe()
-        this.selector.run(this.props, true)
+        this.selector.run(this.props)
         if (this.selector.shouldComponentUpdate) this.forceUpdate()
       }
 
@@ -236,7 +236,7 @@ export default function connectAdvanced(
       }
 
       onStateChange() {
-        this.selector.run(this.props, true)
+        this.selector.run(this.props)
 
         if (!this.selector.shouldComponentUpdate) {
           this.notifyNestedSubs()
