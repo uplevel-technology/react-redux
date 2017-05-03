@@ -4,51 +4,12 @@ import { Component, createElement } from 'react'
 
 import Subscription from '../utils/Subscription'
 import { storeShape, subscriptionShape } from '../utils/PropTypes'
-import { map, get, values, reduce, keys, filter } from 'lodash'
+import {values, reduce, keys, pickBy} from 'lodash'
 import Q from 'q'
 
 let hotReloadingVersion = 0
 const dummyState = {}
 function noop() {}
-function makeSelectorStateful(sourceSelector, store) {
-  // wrap the selector in an object that tracks its results between runs.
-  const selector = {
-    run: function runComponentSelector(props) {
-      try {
-        const nextProps = sourceSelector(store.getState(), props)
-        const promisedProps = filter(
-          values(nextProps),
-          prop => typeof prop.then === 'function'
-        )
-
-        if (promisedProps.length > 0) {
-          selector.propsPromise = Q.allSettled(promisedProps).then(resolvedValues => {
-            selector.shouldComponentUpdate = true
-            selector.props = reduce(
-              keys(nextProps),
-              (acc, prop, idx) => {
-                acc[prop] = resolvedValues[idx].value
-                return acc
-              },
-              {}
-            )
-            selector.error = null
-            return selector.props
-          })
-        } else if (nextProps !== selector.props || selector.error) {
-          selector.shouldComponentUpdate = false
-          selector.props = nextProps
-          selector.error = null
-        }
-      } catch (error) {
-        selector.shouldComponentUpdate = true
-        selector.error = error
-      }
-    }
-  }
-
-  return selector
-}
 
 export default function connectAdvanced(
   /*
@@ -170,27 +131,24 @@ export default function connectAdvanced(
           run: function runComponentSelector(props, triggerUpdate) {
             try {
               const nextProps = sourceSelector(store.getState(), props)
-              const promisedProps = filter(
-                values(nextProps),
+              const promisedProps = pickBy(
+                nextProps,
                 prop => prop && typeof prop.then === 'function'
               )
+              const promisedPropsValues = values(promisedProps)
 
-              if (promisedProps.length > 0 && (nextProps !== selector.props || selector.error)) {
-                selector.props = { ...nextProps }
+              if (promisedPropsValues.length > 0 && (nextProps !== selector.props || selector.error)) {
+                selector.props = nextProps
                 selector.error = null
-                const nextPropsAsPromises = map(
-                  values(nextProps),
-                  prop => Promise.resolve(prop)
-                )
-                selector.propsPromise = Q.allSettled(nextPropsAsPromises).then(resolvedValues => {
+                Q.allSettled(promisedPropsValues).then(resolvedValues => {
                   selector.shouldComponentUpdate = true
-                  selector.props = reduce(
-                    keys(nextProps),
+                  reduce(
+                    keys(promisedProps),
                     (acc, prop, idx) => {
                       acc[prop] = resolvedValues[idx].value
                       return acc
                     },
-                    {}
+                    selector.props
                   )
                   selector.error = null
                   if (triggerUpdate) component.setState(dummyState)
@@ -286,18 +244,6 @@ export default function connectAdvanced(
           this.componentDidUpdate = this.notifyNestedSubsOnComponentDidUpdate
           this.setState(dummyState)
         }
-        // this.selector.run(this.props)
-        // if (!this.selector.shouldComponentUpdate) {
-        //   this.notifyNestedSubs()
-        // } else {
-        //   this.selector.propsPromise.then(() => {
-        //     if (this.selector.shouldComponentUpdate) {
-        //       this.componentDidUpdate = this.notifyNestedSubsOnComponentDidUpdate
-        //
-        //       this.setState(dummyState)
-        //     }
-        //   })
-        // }
       }
 
       notifyNestedSubsOnComponentDidUpdate() {
