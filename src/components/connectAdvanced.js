@@ -140,8 +140,17 @@ export default function connectAdvanced(
               if (promisedPropsValues.length > 0 && (nextProps !== selector.props || selector.error)) {
                 selector.props = nextProps
                 selector.error = null
+
                 Q.allSettled(promisedPropsValues).then(resolvedValues => {
                   selector.shouldComponentUpdate = true
+                  /**
+                   * NOTE
+                   * This reduce call mutates selector.props in a dangerous way.
+                   * But it's required right now to ensure that nextProps and selector.props are referentially equal
+                   * in order to avoid extra re-renders.
+                   * #addExtraProps shallow copies the props so any potential side-effects from this mutation
+                   * should ideally be contained within this block, which is why this is acceptable for now.
+                   */
                   reduce(
                     keys(promisedProps),
                     (acc, prop, idx) => {
@@ -151,6 +160,13 @@ export default function connectAdvanced(
                     selector.props
                   )
                   selector.error = null
+
+                  /**
+                   * NOTE
+                   * This is an anti-pattern written to re-render the wrapped component
+                   * in case we have a one of the values in returned by the sourceSelector
+                   * is a Promise (i.e. happens on a worker thread).
+                   */
                   component.setState(dummyState)
                   return selector.props
                 })
